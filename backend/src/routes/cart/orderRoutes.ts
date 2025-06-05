@@ -1,5 +1,5 @@
 import { Router, RequestHandler } from 'express';
-import { getOrderHandler, addToOrderHandler, updateOrderItemHandler, removeOrderItemHandler, placeOrderHandler } from '../../controllers/cart/orderController';
+import { getOrderHandler, addToOrderHandler, updateOrderItemHandler, removeOrderItemHandler, placeOrderHandler, getOrderHistoryHandler } from '../../controllers/cart/orderController';
 import { Request, Response, NextFunction } from 'express';
 
 const router = Router();
@@ -23,5 +23,6 @@ router.post('/', checkSession, wrapHandler(addToOrderHandler));
 router.put('/', checkSession, wrapHandler(updateOrderItemHandler));
 router.delete('/:productId', checkSession, wrapHandler(removeOrderItemHandler));
 router.post('/place', checkSession, wrapHandler(placeOrderHandler));
+router.get('/history', checkSession, wrapHandler(getOrderHistoryHandler));
 
 export default router;

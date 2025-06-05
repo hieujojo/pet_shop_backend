@@ -19,7 +19,6 @@ if (!WitAI) {
 // Khởi tạo Redis client với xử lý lỗi
 const redisClient = createClient({ url: REDIS_URL });
 let redisAvailable = true;
-
 redisClient.on('error', (err) => {
   console.error('Redis Client Error:', err);
   redisAvailable = false;
@@ -89,6 +88,9 @@ const SIMPLE_INTENTS_KEYWORDS: { [key: string]: RegExp } = {
   'pet_care': /(chăm sóc|nuôi).*(thú cưng|chó|mèo).*(thế nào|hiệu quả)/i,
   'find_cat_accessories': /tìm.*phụ kiện.*mèo/i,
   'find_dog_accessories': /tìm.*phụ kiện.*chó/i,
+  'cat_food_usage': /(thức ăn|hạt).*(mèo).*(dùng|sử dụng).*(thế nào|ra sao|cách nào)/i,
+  'litter_box_usage': /(sử dụng|dùng).*(khay vệ sinh|nhà vệ sinh).*(thế nào|ra sao|cách nào)/i,
+  'confirm_product_search': /(tôi muốn tìm|tìm).*(thức ăn|hạt|phụ kiện).*(mèo|chó|cats on|whiskas|royal canin)/i,
 };
 
 // Định nghĩa SIMPLE_RESPONSES
@@ -104,8 +106,63 @@ const SIMPLE_RESPONSES: { [key: string]: string } = {
 const validIntents = [
   'chào hỏi', 'cảm ơn', 'tạm biệt', 'chỉ xem qua', 'consult_pet_product',
   'find_dog_accessories', 'find_cat_accessories', 'recommend_product', 'check_order',
-  'place_order', 'find_article', 'find_menu', 'pet_name', 'pet_disease', 'product_usage', 'pet_care'
+  'place_order', 'find_article', 'find_menu', 'pet_name', 'pet_disease', 'product_usage', 'pet_care',
+  'cat_food_usage', 'litter_box_usage', 'confirm_product_search'
 ];
+
+const handleConfirmProductSearch = async (userMessage: string, intentData: IntentData, db: Db): Promise<ChatResponse> => {
+  const productName = intentData.productName || userMessage.match(/(?:tìm)?\s*(hạt\s*(cats on|whiskas|royal canin)|thức ăn)/i)?.[1];
+
+  if (productName) {
+    try {
+      console.log('Searching for product:', productName); // Debug log
+      const products = await db
+        .collection('products')
+        .find({ title: { $regex: new RegExp(productName, 'i') } })
+        .limit(1)
+        .toArray();
+
+      if (products.length > 0) {
+        const product = products[0];
+        return {
+          intent: 'confirm_product_search',
+          message: `Dựa trên yêu cầu của bạn, tôi tìm thấy sản phẩm này nè:  
+**${product.title}**  
+- **Thương hiệu**: ${product.brand || 'Không có thương hiệu'}  
+- **Giá**: ${parseFloat(product.originalPrice?.replace(/[^0-9]/g, '') || '0')} VND  
+- **Mô tả**: ${getProductDescription(product.title) || 'Sản phẩm chất lượng cao cho thú cưng của bạn.'}  
+- **Link sản phẩm**: ${product.href || `/products/${product._id}`}  
+- **Hình ảnh**: ${product.image || 'https://via.placeholder.com/150'}  
+Nếu bạn muốn biết thêm chi tiết hoặc tìm loại khác, cứ nói mình nhé! 🐾`,
+          products: [{
+            id: product._id?.toString() || '0',
+            name: product.title || 'Sản phẩm không tên',
+            brand: product.brand || 'Không có thương hiệu',
+            price: parseFloat(product.originalPrice?.replace(/[^0-9]/g, '') || '0'),
+            image: product.image || 'https://via.placeholder.com/150',
+            href: `/products/${product._id}`,
+          }],
+        };
+      } else {
+        return {
+          intent: 'confirm_product_search',
+          message: `Hmmm, mình vừa tìm kiếm nhưng có vẻ shop mình hiện tại chưa có "${productName}" đâu bạn ơi. 😿 Bạn có muốn thử loại khác không? Cứ nói mình nhé! 😺`,
+        };
+      }
+    } catch (error) {
+      console.error('Error in handleConfirmProductSearch:', error);
+      return {
+        intent: 'confirm_product_search',
+        message: 'Có lỗi khi tìm sản phẩm. Vui lòng thử lại sau!',
+      };
+    }
+  }
+
+  return {
+    intent: 'confirm_product_search',
+    message: 'Bạn có muốn mình tìm một sản phẩm cụ thể nào không? Ví dụ: "Hạt cho mèo Cats On" hoặc "Khay vệ sinh Richell".',
+  };
+};
 
 // Từ khóa vi phạm (bạo lực, tình dục, v.v.)
 const VIOLATION_KEYWORDS = ['đánh', 'đập', 'bạo lực', 'tình dục', 'giết', 'hành hung'];
@@ -399,11 +456,11 @@ const handleConsultProduct = async (db: Db): Promise<ChatResponse> => {
           description: 'Thức ăn hạt dinh dưỡng cho mèo, trọng lượng 1.4kg, hỗ trợ sức khỏe lông và hệ tiêu hóa, hương vị thơm ngon.',
           brand: "Cat's On",
           price: 220000,
-          image: 'https://paddy.vn/cdn/shop/files/4_0dae6796-b143-40a4-8dd9-501730455a29_785x.png?v=1740383628',
+          image: 'https://paddy.vn/cdn/images/4_0dae6796-b143-40a4-8dd9-501730455a29_785x.png?v=1740383628',
           href: '/products/67f80b979430271ff0b98cee',
         },
       ],
-      buttons: [{ label: 'Return', action: 'return' }],
+      buttons: [{ label: 'Return', action: 'return' }]
     };
   } catch (error) {
     console.error('Error in handleConsultProduct:', error);
@@ -417,7 +474,7 @@ const handleConsultProduct = async (db: Db): Promise<ChatResponse> => {
           description: 'Khay vệ sinh thiết kế thành cao, phù hợp cho mèo dưới 8kg, kích thước 41x50x31 cm, dễ dàng vệ sinh.',
           brand: 'Richell',
           price: 400000,
-          image: 'https://paddy.vn/cdn/shop/files/1_d2b357e9-3a9b-4dd3-90c9-a728432acfd5_785x.png?v=1741147113',
+          image: 'https://paddy.vn/cdn/shop/files/1_d2b357e9-3a9b-4dd3-90c9-a728432acfd5_785x.png',
           href: '/products/67f80b979430271ff0b98cec',
         },
         {
@@ -523,6 +580,70 @@ const getProductDescription = (title: string): string => {
   }
 };
 
+// Thêm mới: Hàm xử lý câu hỏi về cách dùng thức ăn hạt cho mèo với câu trả lời sẵn
+const handleCatFoodUsage = async (userMessage: string, intentData: IntentData, db: Db): Promise<ChatResponse> => {
+  // Trả lời sẵn cho câu hỏi chung
+  return {
+    intent: 'cat_food_usage',
+    message: `Để dùng thức ăn hạt cho mèo, bạn làm theo các bước đơn giản này nhé:  
+1. Xem kỹ hướng dẫn trên bao bì để biết lượng ăn phù hợp với cân nặng và độ tuổi của bé mèo.  
+2. Chia khẩu phần thành 2-3 bữa mỗi ngày, tránh để thức ăn trong bát quá lâu kẻo mất ngon.  
+3. Đảm bảo luôn có nước sạch bên cạnh để mèo uống.  
+4. Nếu mèo mới dùng loại hạt này, bạn nên trộn dần với thức ăn cũ trong khoảng 7-10 ngày để bé thích nghi, tránh bị rối loạn tiêu hóa.  
+
+Nếu bạn muốn tìm loại hạt cụ thể, cứ nói mình nhé! 😺`,
+  };
+};
+
+// Thêm mới: Hàm xử lý câu hỏi về cách dùng khay vệ sinh
+const handleLitterBoxUsage = async (userMessage: string, intentData: IntentData, db: Db): Promise<ChatResponse> => {
+  const productName = intentData.productName || userMessage.match(/(?:khay vệ sinh|nhà vệ sinh)\s*(\w+)/i)?.[1];
+  if (productName) {
+    try {
+      const products = await db
+        .collection('products')
+        .find({ title: { $regex: productName, $options: 'i' } })
+        .limit(1)
+        .toArray();
+
+      if (products.length > 0) {
+        const product = products[0];
+        const usageInstructions = product.usageInstructions || `Để sử dụng "${product.title}":
+1. Đặt khay ở nơi yên tĩnh, dễ tiếp cận nhưng riêng tư cho mèo.
+2. Đổ cát vệ sinh (khoảng 5-7 cm độ sâu) vào khay.
+3. Dọn phân và cát bẩn hàng ngày bằng xẻng (nếu có).
+4. Thay cát hoàn toàn và vệ sinh khay mỗi 1-2 tuần.
+5. Nếu mèo chưa quen, đặt mèo vào khay sau khi ăn để khuyến khích sử dụng.`;
+        return {
+          intent: 'litter_box_usage',
+          message: usageInstructions,
+          products: [{
+            id: product._id?.toString() || '0',
+            name: product.title || 'Khay vệ sinh không tên',
+            brand: product.brand || 'Không có thương hiệu',
+            price: parseFloat(product.originalPrice?.replace(/[^0-9]/g, '') || '0'),
+            image: product.image || 'https://via.placeholder.com/150',
+            href: `/products/${product._id}`,
+          }],
+        };
+      }
+    } catch (error) {
+      console.error('Error in handleLitterBoxUsage:', error);
+    }
+  }
+
+  return {
+    intent: 'litter_box_usage',
+    message: `Để sử dụng khay vệ sinh cho mèo:
+1. Chọn vị trí yên tĩnh, riêng tư nhưng dễ tiếp cận.
+2. Đổ cát vệ sinh vào khay (độ sâu khoảng 5-7 cm).
+3. Dùng xẻng dọn phân và cát bẩn mỗi ngày.
+4. Thay toàn bộ cát và rửa khay bằng xà phòng nhẹ mỗi 1-2 tuần.
+5. Nếu mèo chưa quen, đặt mèo vào khay sau bữa ăn để tập thói quen.
+Bạn có muốn mình tìm khay cụ thể như "Khay Richell" không?`,
+  };
+};
+
 // Hàm chính xử lý chat
 export const chatWithAI = async (
   messages: any,
@@ -541,6 +662,13 @@ export const chatWithAI = async (
 
     console.log('User message:', userMessage); // Thêm log để debug
 
+    // Xóa cache trước khi xử lý để tránh lỗi từ cache cũ
+    if (redisAvailable) {
+      const cacheKey = `witai:${userMessage}`;
+      await redisClient.del(cacheKey);
+      console.log('Cache cleared for:', cacheKey);
+    }
+
     // Kiểm tra nội dung vi phạm
     if (!checkContentSafety(userMessage)) {
       return {
@@ -554,7 +682,7 @@ export const chatWithAI = async (
 
     const context = await getContext(identifier);
     if (context) {
-      console.log('Tải context cho:', identifier);
+      console.log('Tải context cho nầy:', identifier);
     }
 
     // Kiểm tra intent đơn giản trước
@@ -579,6 +707,15 @@ export const chatWithAI = async (
           response = await handleProductUsage(userMessage, intentData, db);
         } else if (intent === 'pet_care') {
           response = await handlePetCare();
+        } else if (intent === 'cat_food_usage') {
+          const intentData = await getWitAIIntent(userMessage);
+          response = await handleCatFoodUsage(userMessage, intentData, db);
+        } else if (intent === 'litter_box_usage') {
+          const intentData = await getWitAIIntent(userMessage);
+          response = await handleLitterBoxUsage(userMessage, intentData, db);
+        } else if (intent === 'confirm_product_search') {
+          const intentData = await getWitAIIntent(userMessage);
+          response = await handleConfirmProductSearch(userMessage, intentData, db);
         } else {
           response = { intent, message: SIMPLE_RESPONSES[intent], sessionId };
         }
@@ -628,10 +765,10 @@ export const chatWithAI = async (
             }
           : {
               intent: 'place_order',
-              message: 'Xin lỗi, bạn cần đăng nhập để đặt hàng. Bạn muốn tìm sản phẩm trước không?',
+              message: 'Xin lỗi, bạn cần đăng nhập để đặt hàng. Bạn có muốn tìm sản phẩm trước không?',
             };
         break;
-      case 'find_article':
+      case 'find_article': {
         let keywords = intentData.keywords;
         if (keywords.length === 0) {
           keywords = userMessage.split(' ').filter((word) => word.length > 2);
@@ -648,15 +785,15 @@ export const chatWithAI = async (
                   intent: 'find_article',
                   message: 'Danh sách bài viết liên quan. Bạn muốn đọc bài nào?',
                   articles: articles.map((a: any) => ({
-                    id: a.id?.toString() || '0',
+                    id: a._id?.toString() || '0',
                     title: a.title || 'Bài viết không tên',
                     content: (a.content || '').substring(0, 100) + '...',
-                    href: a.href || `/articles/${a.id}`,
+                    href: a.href || `/articles/${a._id}`,
                   })),
                 }
               : {
                   intent: 'find_article',
-                  message: 'Không tìm thấy bài viết. Bạn muốn thử từ khóa khác không?',
+                  message: 'Không tìm thấy bài viết. Bạn có muốn thử từ khóa khác không?',
                 };
           } catch (error) {
             console.error('Error in find_article:', error);
@@ -672,7 +809,8 @@ export const chatWithAI = async (
           };
         }
         break;
-      case 'find_menu':
+      }
+      case 'find_menu': {
         try {
           const menuItems = await db
             .collection('menu_items')
@@ -684,10 +822,10 @@ export const chatWithAI = async (
                 intent: 'find_menu',
                 message: 'Danh sách menu chính. Bạn muốn khám phá mục nào?',
                 menuItems: menuItems.map((m: any) => ({
-                  id: m.id?.toString() || '0',
+                  id: m._id?.toString() || '0',
                   name: m.name || 'Menu không tên',
                   description: m.description || '',
-                  href: m.href || `/menu/${m.id}`,
+                  href: m.href || `/menu/${m._id}`,
                 })),
               }
             : {
@@ -702,6 +840,7 @@ export const chatWithAI = async (
           };
         }
         break;
+      }
       case 'pet_name':
         responseData = await handlePetName(userMessage, context, identifier, sessionId, normalizedMessages, intentData);
         await saveContext(identifier, normalizedMessages, responseData, intentData.petName || context?.petName, intentData.petType || context?.petType);
@@ -715,6 +854,15 @@ export const chatWithAI = async (
       case 'pet_care':
         responseData = await handlePetCare();
         break;
+      case 'cat_food_usage':
+        responseData = await handleCatFoodUsage(userMessage, intentData, db);
+        break;
+      case 'litter_box_usage':
+        responseData = await handleLitterBoxUsage(userMessage, intentData, db);
+        break;
+      case 'confirm_product_search':
+        responseData = await handleConfirmProductSearch(userMessage, intentData, db);
+        break;
       default:
         responseData = {
           intent: 'hỏi đáp',
@@ -722,8 +870,16 @@ export const chatWithAI = async (
         };
     }
 
+    // Kiểm tra context để xử lý câu trả lời "Ừ, tìm Hạt Cats On đi"
+    if (context?.lastResponse?.message?.includes('Bạn có muốn mình tìm sản phẩm cụ thể') && /ừ|tìm|đi|okay|ok/i.test(userMessage)) {
+      intentData.intent = 'confirm_product_search';
+      intentData.productName = userMessage.match(/(?:tìm)?\s*(hạt\s*(cats on|whiskas|royal canin)|thức ăn)/i)?.[1] || 'Hạt cho mèo Cats On';
+      responseData = await handleConfirmProductSearch(userMessage, intentData, db);
+    }
+
     responseData.sessionId = sessionId;
-    await saveContext(identifier, normalizedMessages, responseData, context?.petName, context?.petType);
+
+    await saveContext(identifier, normalizedMessages, responseData);
     await db.collection('chat_history').insertMany([
       { session_id: sessionId, user_id: userId || null, role: 'user', content: userMessage, created_at: new Date() },
       { session_id: sessionId, user_id: userId || null, role: 'assistant', content: JSON.stringify(responseData), created_at: new Date() },

@@ -168,6 +168,29 @@ export const placeOrderHandler = async (req: CustomRequest, res: Response) => {
           quantity: item.quantity,
         }],
       });
+
+      // Lưu lịch sử đơn hàng
+      await req.db.collection('order_history').insertOne({
+        order_code: orderCode,
+        total: (item.price * item.quantity).toFixed(3),
+        status: 2,
+        created_at: new Date(),
+        updated_at: new Date(),
+        user: {
+          id: email,
+          name: userInfo.name,
+          address: userInfo.address,
+          phone: userInfo.phone,
+        },
+        product: [{
+          id: item.productId,
+          name: item.title,
+          price: item.price,
+          quantity: item.quantity,
+          image: item.image || '/images/default-product.jpg',
+          brand: item.brand || 'Unknown Brand',
+        }],
+      });
     }
 
     await req.db.collection('order_products').deleteOne({
@@ -262,5 +285,46 @@ export const placeOrderHandler = async (req: CustomRequest, res: Response) => {
   } catch (error: any) {
     console.error('Lỗi khi đặt hàng:', error);
     return res.status(500).json({ error: 'Không thể đặt hàng', details: error.message });
+  }
+};
+
+export const getOrderHistoryHandler = async (req: CustomRequest, res: Response) => {
+  try {
+    if (!req.db) throw new Error('Kết nối cơ sở dữ liệu không khả dụng');
+    const email = req.session.user?.email;
+    if (!email) throw new Error('Người dùng chưa xác thực');
+
+    const orders = await req.db.collection('order_history').find({ 'user.id': email }).toArray();
+    
+    if (!orders || orders.length === 0) {
+      return res.status(200).json({ message: 'Không tìm thấy lịch sử đơn hàng', orders: [] });
+    }
+
+    const result = orders.map(order => ({
+      order_code: order.order_code,
+      total: parseFloat(order.total),
+      status: order.status,
+      created_at: order.created_at,
+      updated_at: order.updated_at,
+      user: {
+        id: order.user.id,
+        name: order.user.name,
+        address: order.user.address,
+        phone: order.user.phone,
+      },
+      products: order.product.map((item: any) => ({
+        productId: item.id,
+        title: item.name,
+        brand: item.brand || 'Unknown Brand',
+        image: item.image || '/images/default-product.jpg',
+        price: item.price,
+        quantity: item.quantity,
+      })),
+    }));
+
+    return res.status(200).json({ message: 'Lấy lịch sử đơn hàng thành công', orders: result });
+  } catch (error: any) {
+    console.error('Lỗi khi lấy lịch sử đơn hàng:', error);
+    return res.status(500).json({ error: 'Không thể lấy lịch sử đơn hàng' });
   }
 };
