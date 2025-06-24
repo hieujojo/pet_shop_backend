@@ -8,8 +8,48 @@
   ],
   "routes": [
     {
+      "src": "/articles/(.*)",
+      "dest": "backend/api/articles.js"
+    },
+    {
+      "src": "/auth/(.*)",
+      "dest": "backend/api/auth.js"
+    },
+    {
+      "src": "/cart/(.*)",
+      "dest": "backend/api/cart.js"
+    },
+    {
+      "src": "/products/(.*)",
+      "dest": "backend/api/products.js"
+    },
+    {
+      "src": "/chatbot/(.*)",
+      "dest": "backend/api/chatbot.js"
+    },
+    {
+      "src": "/brands/(.*)",
+      "dest": "backend/api/brands.js"
+    },
+    {
+      "src": "/collections/(.*)",
+      "dest": "backend/api/collections.js"
+    },
+    {
+      "src": "/data/(.*)",
+      "dest": "backend/api/data.js"
+    },
+    {
+      "src": "/menu/(.*)",
+      "dest": "backend/api/menu.js"
+    },
+    {
+      "src": "/reviews/(.*)",
+      "dest": "backend/api/reviews.js"
+    },
+    {
       "src": "/(.*)",
-      "dest": "/backend/api/$1"
+      "dest": "backend/api/articles.js"
     }
   ]
 }

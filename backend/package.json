@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "build": "tsc"
+    "build": "tsc --outDir backend/api/"
   },
   "dependencies": {
     "@azure-rest/ai-inference": "^1.0.0-beta.5",
