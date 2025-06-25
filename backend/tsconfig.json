@@ -6,7 +6,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "outDir": "./dist",
+    "outDir": "./src",  // Thay ./dist thành ./src
     "rootDir": "./src"
   },
   "include": ["src/**/*"],
